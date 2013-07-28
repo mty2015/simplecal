@@ -3,7 +3,7 @@ package cnblogs.jcli.calendar;
 import java.util.Date;
 
 /**
- * 日历事件/活动.
+ * 日历事件/活动. Redis
  * 
  *
  * @author tony.li.fly@gmail.com
