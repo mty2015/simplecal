@@ -20,10 +20,4 @@ public interface Rule {
      */
     Date nextOccurDate(Date offsetDate);
 
-    /**
-     * 日历事件不再发生的结束时间
-     * 
-     * @return 如果返回<code>null</code>则表示永不结束
-     */
-    Date getRecurEndDate();
 }

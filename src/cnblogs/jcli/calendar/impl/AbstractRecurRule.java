@@ -3,15 +3,15 @@ package cnblogs.jcli.calendar.impl;
 import java.util.Date;
 import java.util.Set;
 
-import org.joda.time.DateTime;
-
 import cnblogs.jcli.calendar.Event;
 import cnblogs.jcli.calendar.RuleFactory;
 import cnblogs.jcli.calendar.field.ByDay;
+import cnblogs.jcli.calendar.redis.CacheKeys;
+import cnblogs.jcli.calendar.redis.JRedisClientFactory;
+import cnblogs.jcli.calendar.redis.RecurCacheWindowSize;
 import cnblogs.jcli.calendar.utils.DateTimeUtils;
 
-public abstract class AbstractRecurRule extends AbstractRule{
-    
+public abstract class AbstractRecurRule extends AbstractRule {
 
     private Date until;
     private Integer count;
@@ -21,109 +21,94 @@ public abstract class AbstractRecurRule extends AbstractRule{
     private Set<Integer> byYearDaySet;
     private Set<Integer> byWeekNoSet;
     private Set<Integer> byMonthSet;
-    
-    public AbstractRecurRule(final Event calendar){
-        super(calendar);
+
+    private RecurCacheWindowSize cacheWindowSize;
+    protected Date curDay;
+    protected int times;
+
+    public AbstractRecurRule(final Event event) {
+        super(event);
+        curDay = new Date(getStartDateTime().getTime());//deep copy
         parse();
     }
 
-    //解析rule字符串规则
+    // 解析rule字符串规则
     private void parse() {
-        String ruleStr = calendar.getRule();
-        //until
+        String ruleStr = event.getRule();
+        // until
         until = RuleFactory.extractUntilDate(ruleStr);
-        //count
+        // count
         count = RuleFactory.extractCount(ruleStr);
-        //interval
+        // interval
         interval = RuleFactory.extractInterval(ruleStr);
-        //byDaySet
+        // byDaySet
         byDaySet = RuleFactory.extractByDaySet(ruleStr);
-        //byMonthDaySet
+        // byMonthDaySet
         byMonthDaySet = RuleFactory.extractByMonthDaySet(ruleStr);
-        //byYearDaySet
+        // byYearDaySet
         byYearDaySet = RuleFactory.extractByYearDaySet(ruleStr);
-        //byWeekNoset
+        // byWeekNoset
         byWeekNoSet = RuleFactory.extractByWeekNoSet(ruleStr);
-        //byMonthSet
+        // byMonthSet
         byMonthSet = RuleFactory.extractByMonthSet(ruleStr);
     }
-    
+
     @Override
     public boolean includes(Date theDate) {
-        if(theDate == null){
-            return false;
-        }
-        
-        //如果小时和分相同, 则偏移一分钟, 避免临界值的时候计算到下一个周期内
-        Date compareDate = DateTimeUtils.clearTime(theDate);
-        if(new DateTime(compareDate).getMinuteOfDay() == getStartTime()){
-            compareDate = DateTimeUtils.plusMinutes(compareDate, -1);
-        }
-        
-        Date nextOccurDate = nextOccurDate(compareDate);
-        return DateTimeUtils.isSameDay(theDate, nextOccurDate);
+        loadCacheSize();
+
+        return JRedisClientFactory.getJRedisClient().zrank(CacheKeys.getRecurEventKey(event),
+                String.valueOf(theDate.getTime())) != null;
     }
-    
+
     @Override
     public Date nextOccurDate(Date offsetDate) {
-        //已过期时间
-        if(isExpiredDate(offsetDate)){
+        loadCacheSize();
+
+        Set<String> nextDateStrSet =
+                JRedisClientFactory.getJRedisClient().zrangeByScore(
+                        CacheKeys.getRecurEventKey(event), String.valueOf(offsetDate.getTime()),
+                        "+inf", 0, 1);
+        if (nextDateStrSet.isEmpty()) {
             return null;
         }
-        
-        Date startDateTime = getStartDateTime();
-        
-        //早于开始时间,则直接返回事件的开始时间
-        if(DateTimeUtils.compareTo(offsetDate, startDateTime) < 0){
-            return startDateTime;
-        }
-        
-        //下个周期内事件发生时间
-        Date nextOccurDate = computeNextOccurDate(offsetDate);
-        
-        //再次检查计算出的时间是否已过期
-        if(isExpiredDate(nextOccurDate)){
-            nextOccurDate = null;
-        }
-        return nextOccurDate;
+        return new Date(Long.valueOf(nextDateStrSet.iterator().next()));
     }
-    
-    protected abstract Date computeNextOccurDate(Date offsetDate);
-    
-    @Override
-    public Date getRecurEndDate() {
-        Date recurEndDate = null;
-        if(getUntil() != null){
-            recurEndDate = getUntil();
-        }else if(getCount() != null){
-            recurEndDate = computeTheLastCountOccurDate();
+
+
+    public void loadCacheSize() {
+
+        boolean existKey =
+                JRedisClientFactory.getJRedisClient().exists(CacheKeys.getRecurEventKey(event));
+        if (existKey) return;
+
+        while (true) {
+            boolean isValidDay = true;
+            if (getUntil() != null) {
+                isValidDay = DateTimeUtils.compareTo(curDay, getUntil()) <= 0;
+            } else if (getCount() != null) {
+                isValidDay = times < getCount();
+            }
+
+            // 发生日期超出界限
+            if (!(isValidDay && getCacheWindowSize().inWindow(curDay))) {
+                break;
+            }
+
+            // JRedisClientFactory.getJRedisClient().zadd(CacheKeys.getRecurEventKey(event),
+            // occurDay.getTime(), String.valueOf(occurDay.getTime()));
+            // occurDay = computNextOccurDay(occurDay, occurIndex++);
+            
+            loadOneCycleCache();
+            
+            
         }
-        return recurEndDate;
     }
-    
-    /**
-     * 计算最出一次重复发生的时间.
-     */
-    protected abstract Date computeTheLastCountOccurDate();
-    
-    
-    /**
-     * 
-     * @param date
-     * @return
-     */
-    public boolean isExpiredDate(Date date){
-        if(date == null){
-            return true;
-        }
-        if(getRecurEndDate() == null){//永不结束事件情况
-            return false;
-        }
-        return DateTimeUtils.compareTo(date, getRecurEndDate()) > 0;
-    }
-    
+
+    public abstract void loadOneCycleCache();
+
     public Event getCalendar() {
-        return calendar;
+        return event;
     }
 
     public Date getUntil() {
@@ -135,7 +120,7 @@ public abstract class AbstractRecurRule extends AbstractRule{
     }
 
     public Integer getInterval() {
-        if(interval == null){
+        if (interval == null) {
             return 1;
         }
         return interval;
@@ -160,7 +145,14 @@ public abstract class AbstractRecurRule extends AbstractRule{
     public Set<Integer> getByMonthSet() {
         return byMonthSet;
     }
-    
-    public static void main(String[] args){
+
+    public RecurCacheWindowSize getCacheWindowSize() {
+        return cacheWindowSize;
     }
+
+    public void setCacheWindowSize(RecurCacheWindowSize cacheWindowSize) {
+        this.cacheWindowSize = cacheWindowSize;
+    }
+
+
 }

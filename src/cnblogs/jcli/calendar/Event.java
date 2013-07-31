@@ -9,6 +9,9 @@ import java.util.Date;
  * @author tony.li.fly@gmail.com
  */
 public class Event {
+    
+    private long id;
+    
 	/**
 	 * 事件标题
 	 */
@@ -45,6 +48,14 @@ public class Event {
     private String rule;
     
     
+    public long getId() {
+        return id;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
+
     public int getCalendarType() {
         return calendarType;
     }
