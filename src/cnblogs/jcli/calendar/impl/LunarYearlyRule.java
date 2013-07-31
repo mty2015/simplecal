@@ -12,6 +12,7 @@ public class LunarYearlyRule extends AbstractYearlyRule {
 
     public LunarYearlyRule(Event calendar) {
         super(calendar);
+        this.ruleHelper = new LunarCalenarRuleHelper();
     }
 
     @Override

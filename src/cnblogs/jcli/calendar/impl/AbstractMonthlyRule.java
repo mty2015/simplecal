@@ -2,13 +2,10 @@ package cnblogs.jcli.calendar.impl;
 
 import java.util.Date;
 
-import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import cnblogs.jcli.calendar.Event;
-import cnblogs.jcli.calendar.RuleException;
-import cnblogs.jcli.calendar.field.ByDay;
 import cnblogs.jcli.calendar.redis.CacheKeys;
 import cnblogs.jcli.calendar.redis.JRedisClientFactory;
 

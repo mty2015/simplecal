@@ -17,7 +17,7 @@ public class DailyRule extends AbstractRecurRule {
         JRedisClientFactory.getJRedisClient().zadd(CacheKeys.getRecurEventKey(event),
             curDay.getTime(), String.valueOf(curDay.getTime()));
         
-        curDay = DateTimeUtils.plusDays(curDay, 1);
+        curDay = DateTimeUtils.plusDays(curDay, getInterval());
         times++;
         
     }

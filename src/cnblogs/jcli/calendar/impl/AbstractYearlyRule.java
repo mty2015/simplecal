@@ -8,7 +8,7 @@ import cnblogs.jcli.calendar.redis.JRedisClientFactory;
 
 public abstract class AbstractYearlyRule extends AbstractRecurRule {
 
-    private AbstractMutliCalendarRuleHelper ruleHelper = new GregorianCalenarRuleHelper();
+    protected AbstractMutliCalendarRuleHelper ruleHelper = new GregorianCalenarRuleHelper();
 
     public AbstractYearlyRule(Event calendar) {
         super(calendar);
